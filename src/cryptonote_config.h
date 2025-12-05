@@ -52,3 +52,8 @@ namespace config
     uint32_t const GENESIS_NONCE = 10002;
   }
 }
+      } };
+    std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+    uint32_t const GENESIS_NONCE = 10002;
+  }
+}
