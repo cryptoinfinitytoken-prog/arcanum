@@ -1,4 +1,4 @@
-name: Arcanum Auto-Fix & Build
+name: Arcanum Rescue Build
 
 on: [workflow_dispatch]
 
@@ -10,12 +10,9 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Overwrite Config with Perfect Code
+    - name: FORCE Overwrite Config (Nuclear Fix)
       run: |
-        # Delete the broken file
         rm src/cryptonote_config.h
-        
-        # Write a fresh file line-by-line (Guarantees no hidden chars)
         cat <<EOF > src/cryptonote_config.h
         #pragma once
         #include <string>
