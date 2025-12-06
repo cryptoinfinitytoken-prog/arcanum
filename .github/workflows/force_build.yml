@@ -1,17 +1,26 @@
-name: Arcanum Static Build
+name: Arcanum Amnesia Build
 
 on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    - name: FORCE Overwrite Config (Nuclear Fix)
+    - name: Install Dependencies
+      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
+
+    - name: APPLY ARCANUM PATCHES (Identity + Amnesia)
       run: |
+        # 1. Wipe the Checkpoints (The Amnesia Fix)
+        # We overwrite the file that holds the old block hashes so it accepts ANY new history.
+        echo '#include "checkpoints.h"' > src/checkpoints/checkpoints.cpp
+        echo 'namespace cryptonote { using namespace epee; bool checkpoints::init_default_checkpoints(network_type nettype) { return true; } bool checkpoints::check_block(uint64_t height, const crypto::hash& h, bool& is_a_checkpoint) const { return true; } bool checkpoints::is_in_checkpoint_zone(uint64_t height) const { return false; } bool checkpoints::check_transaction_hashes(uint64_t height, const std::vector<crypto::hash>& tx_hashes) const { return true; } uint64_t checkpoints::get_max_height() const { return 0; } const std::map<uint64_t, crypto::hash>& checkpoints::get_points() const { static std::map<uint64_t, crypto::hash> empty_map; return empty_map; } bool checkpoints::is_alternative_block_allowed(uint64_t blockchain_height, uint64_t block_height, const crypto::hash *block_hash) { return true; } uint64_t checkpoints::get_min_height() const { return 0; } }' >> src/checkpoints/checkpoints.cpp
+
+        # 2. Apply Config (The Identity Fix)
         rm src/cryptonote_config.h
         cat <<EOF > src/cryptonote_config.h
         #pragma once
@@ -56,10 +65,7 @@ jobs:
         }
         EOF
 
-    - name: Install Dependencies
-      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
-
-    - name: Compile STATIC (Fixes Chromebook Error)
+    - name: Compile (Static)
       run: make release-static -j2
 
     - name: Upload Binaries
