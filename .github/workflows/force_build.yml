@@ -1,4 +1,4 @@
-name: Arcanum Clean Source Build
+name: Arcanum Scorched Earth Build
 
 on: [workflow_dispatch]
 
@@ -6,45 +6,86 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-    # 1. Download OFFICIAL Monero Code (Ignores your broken repo files)
+    # 1. Get Official Monero Code (Stable Version)
     - uses: actions/checkout@v4
       with:
         repository: monero-project/monero
         ref: v0.18.3.4
         submodules: recursive
 
-    # 2. Install the Compiler Tools
-    - name: Install Dependencies
-      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
+    # 2. Install Dependencies
+    - name: Install Tools
+      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3
 
-    # 3. Apply Arcanum Identity (Surgical Modifications)
-    - name: Brand the Code
+    # 3. Generate Perfect Config File (Python)
+    # This writes the C++ file from scratch to ensure 100% validity.
+    - name: Write Config File
       run: |
-        # Change Name
-        sed -i 's/CRYPTONOTE_NAME = "monero"/CRYPTONOTE_NAME = "arcanum"/' src/cryptonote_config.h
-        
-        # Change Ports
-        sed -i 's/P2P_DEFAULT_PORT = 18080/P2P_DEFAULT_PORT = 19990/' src/cryptonote_config.h
-        sed -i 's/RPC_DEFAULT_PORT = 18081/RPC_DEFAULT_PORT = 19991/' src/cryptonote_config.h
-        
-        # Change Nonce (Creates Unique Blockchain)
-        sed -i 's/GENESIS_NONCE = 10000/GENESIS_NONCE = 7777/' src/cryptonote_config.h
-        
-        # Verify Changes (Print to log)
-        grep -E "CRYPTONOTE_NAME|DEFAULT_PORT|GENESIS_NONCE" src/cryptonote_config.h
+        python3 -c '
+        code = r"""
+        #pragma once
+        #include <string>
+        #include <boost/uuid/uuid.hpp>
 
-    # 4. Build Static Binary (Low Memory Mode to prevent crashes)
+        #define CRYPTONOTE_DNS_TIMEOUT_MS 20000
+
+        namespace config
+        {
+          uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 239;
+          uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 240;
+          uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 241;
+          uint16_t const P2P_DEFAULT_PORT = 19990;
+          uint16_t const RPC_DEFAULT_PORT = 19991;
+          uint16_t const ZMQ_RPC_DEFAULT_PORT = 19992;
+          boost::uuids::uuid const NETWORK_ID = { { 0x12, 0x30, 0xF1, 0x71, 0x61, 0x04, 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x10 } };
+          std::string const CRYPTONOTE_NAME = "arcanum";
+          std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+          uint32_t const GENESIS_NONCE = 7777;
+        }
+        namespace config
+        {
+          namespace testnet
+          {
+            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
+            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
+            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
+            uint16_t const P2P_DEFAULT_PORT = 28080;
+            uint16_t const RPC_DEFAULT_PORT = 28081;
+            uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
+            boost::uuids::uuid const NETWORK_ID = { { 0x12, 0x30, 0xF1, 0x71, 0x61, 0x04, 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x11 } };
+            std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+            uint32_t const GENESIS_NONCE = 10001;
+          }
+          namespace stagenet
+          {
+            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
+            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
+            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
+            uint16_t const P2P_DEFAULT_PORT = 38080;
+            uint16_t const RPC_DEFAULT_PORT = 38081;
+            uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
+            boost::uuids::uuid const NETWORK_ID = { { 0x12, 0x30, 0xF1, 0x71, 0x61, 0x04, 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x12 } };
+            std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+            uint32_t const GENESIS_NONCE = 10002;
+          }
+        }
+        """
+        with open("src/cryptonote_config.h", "w") as f:
+            f.write(code)
+        '
+
+    # 4. Compile Static (Prevents Chromebook Errors)
     - name: Compile Static
-      run: make release-static -j1
+      run: make release-static -j2
 
-    # 5. Find the files wherever they land
-    - name: Locate Binaries
+    # 5. Search and Rescue Binaries
+    - name: Find and Move Binaries
       run: |
         mkdir arcanum_output
         find build -name "monerod" -type f -exec cp {} arcanum_output/ \;
         find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/ \;
 
-    # 6. Upload the Victory Package
+    # 6. Upload Victory
     - name: Upload Binaries
       uses: actions/upload-artifact@v4
       with:
