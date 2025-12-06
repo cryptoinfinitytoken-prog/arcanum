@@ -1,4 +1,4 @@
-name: Arcanum Scorched Earth Build
+name: Arcanum Official Mirror Build
 
 on: [workflow_dispatch]
 
@@ -6,7 +6,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-    # 1. Get Official Monero Code (Stable Version)
+    # 1. Download the OFFICIAL Monero Code (Guaranteed Clean)
     - uses: actions/checkout@v4
       with:
         repository: monero-project/monero
@@ -15,77 +15,34 @@ jobs:
 
     # 2. Install Dependencies
     - name: Install Tools
-      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3
+      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
 
-    # 3. Generate Perfect Config File (Python)
-    # This writes the C++ file from scratch to ensure 100% validity.
-    - name: Write Config File
+    # 3. Apply Arcanum Identity (Simple Swap)
+    # We do NOT rewrite the file. We just swap specific numbers.
+    - name: Brand the Code
       run: |
-        python3 -c '
-        code = r"""
-        #pragma once
-        #include <string>
-        #include <boost/uuid/uuid.hpp>
+        # Change Name
+        sed -i 's/CRYPTONOTE_NAME = "monero"/CRYPTONOTE_NAME = "arcanum"/g' src/cryptonote_config.h
+        
+        # Change Ports
+        sed -i 's/18080/19990/g' src/cryptonote_config.h
+        sed -i 's/18081/19991/g' src/cryptonote_config.h
+        
+        # Change Nonce (This creates the unique blockchain)
+        sed -i 's/GENESIS_NONCE = 10000/GENESIS_NONCE = 7777/g' src/cryptonote_config.h
 
-        #define CRYPTONOTE_DNS_TIMEOUT_MS 20000
-
-        namespace config
-        {
-          uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 239;
-          uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 240;
-          uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 241;
-          uint16_t const P2P_DEFAULT_PORT = 19990;
-          uint16_t const RPC_DEFAULT_PORT = 19991;
-          uint16_t const ZMQ_RPC_DEFAULT_PORT = 19992;
-          boost::uuids::uuid const NETWORK_ID = { { 0x12, 0x30, 0xF1, 0x71, 0x61, 0x04, 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x10 } };
-          std::string const CRYPTONOTE_NAME = "arcanum";
-          std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-          uint32_t const GENESIS_NONCE = 7777;
-        }
-        namespace config
-        {
-          namespace testnet
-          {
-            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
-            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-            uint16_t const P2P_DEFAULT_PORT = 28080;
-            uint16_t const RPC_DEFAULT_PORT = 28081;
-            uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
-            boost::uuids::uuid const NETWORK_ID = { { 0x12, 0x30, 0xF1, 0x71, 0x61, 0x04, 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x11 } };
-            std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-            uint32_t const GENESIS_NONCE = 10001;
-          }
-          namespace stagenet
-          {
-            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
-            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-            uint16_t const P2P_DEFAULT_PORT = 38080;
-            uint16_t const RPC_DEFAULT_PORT = 38081;
-            uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
-            boost::uuids::uuid const NETWORK_ID = { { 0x12, 0x30, 0xF1, 0x71, 0x61, 0x04, 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x12 } };
-            std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-            uint32_t const GENESIS_NONCE = 10002;
-          }
-        }
-        """
-        with open("src/cryptonote_config.h", "w") as f:
-            f.write(code)
-        '
-
-    # 4. Compile Static (Prevents Chromebook Errors)
+    # 4. Compile Static (Bulletproof for Chromebooks)
     - name: Compile Static
       run: make release-static -j2
 
-    # 5. Search and Rescue Binaries
-    - name: Find and Move Binaries
+    # 5. Find and Move Binaries
+    - name: Locate Binaries
       run: |
         mkdir arcanum_output
         find build -name "monerod" -type f -exec cp {} arcanum_output/ \;
         find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/ \;
 
-    # 6. Upload Victory
+    # 6. Upload Victory Package
     - name: Upload Binaries
       uses: actions/upload-artifact@v4
       with:
