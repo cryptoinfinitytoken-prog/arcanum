@@ -1,31 +1,46 @@
-name: Arcanum Final Rescue
+name: Arcanum Production Build
 
 on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
+    # 1. Checkout a STABLE version (Not Master) to prevent errors
     - uses: actions/checkout@v4
       with:
+        ref: v0.18.3.4
         submodules: recursive
 
-    - name: Install Dependencies
-      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
+    - name: Install Tools
+      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3
 
-    - name: Download Fresh Config & Brand It
+    - name: Rebrand Code (Python Script)
       run: |
-        # 1. Delete your local broken file
-        rm src/cryptonote_config.h
-        
-        # 2. Download the OFFICIAL file from Monero (Guaranteed clean C++)
-        wget https://raw.githubusercontent.com/monero-project/monero/master/src/cryptonote_config.h -O src/cryptonote_config.h
+        python3 -c '
+        import fileinput
+        import sys
 
-        # 3. Apply Arcanum Branding (Search & Replace)
-        sed -i 's/CRYPTONOTE_NAME = "monero"/CRYPTONOTE_NAME = "arcanum"/g' src/cryptonote_config.h
-        sed -i 's/P2P_DEFAULT_PORT = 18080/P2P_DEFAULT_PORT = 19990/g' src/cryptonote_config.h
-        sed -i 's/RPC_DEFAULT_PORT = 18081/RPC_DEFAULT_PORT = 19991/g' src/cryptonote_config.h
-        sed -i 's/GENESIS_NONCE = 10000/GENESIS_NONCE = 7777/g' src/cryptonote_config.h
+        # Define changes
+        # We leave GENESIS_TX alone to prevent parse errors. 
+        # Changing the NONCE is enough to create a unique blockchain.
+        
+        replacements = {
+            "std::string const CRYPTONOTE_NAME = \"monero\";": "std::string const CRYPTONOTE_NAME = \"arcanum\";",
+            "P2P_DEFAULT_PORT = 18080;": "P2P_DEFAULT_PORT = 19990;",
+            "RPC_DEFAULT_PORT = 18081;": "RPC_DEFAULT_PORT = 19991;",
+            "GENESIS_NONCE = 10000;": "GENESIS_NONCE = 7777;"
+        }
+
+        # Process the file line by line
+        for line in fileinput.input("src/cryptonote_config.h", inplace=True):
+            original_line = line.strip()
+            # Check if this line needs replacing
+            for search, replace in replacements.items():
+                if search in original_line:
+                    line = line.replace(search, replace)
+            sys.stdout.write(line)
+        '
 
     - name: Compile Static (Bulletproof)
       run: make release-static -j2
@@ -33,6 +48,7 @@ jobs:
     - name: Find and Move Binaries
       run: |
         mkdir arcanum_output
+        # Find the files wherever they are hiding
         find build -name "monerod" -type f -exec cp {} arcanum_output/ \;
         find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/ \;
 
