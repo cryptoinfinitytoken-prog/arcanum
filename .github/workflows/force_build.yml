@@ -1,4 +1,4 @@
-name: Arcanum Factory Reset Build
+name: Arcanum Final Rescue
 
 on: [workflow_dispatch]
 
@@ -13,20 +13,18 @@ jobs:
     - name: Install Dependencies
       run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
 
-    - name: Repair and Brand Arcanum
+    - name: Download Fresh Config & Brand It
       run: |
-        # 1. FORCE RESET the config file to original Monero state
-        # This discards whatever broken code is currently in your repo
-        git checkout src/cryptonote_config.h
-
-        # 2. Apply Arcanum Branding (Using Search & Replace)
-        sed -i 's/CRYPTONOTE_NAME = "monero"/CRYPTONOTE_NAME = "arcanum"/g' src/cryptonote_config.h
+        # 1. Delete your local broken file
+        rm src/cryptonote_config.h
         
-        # 3. Set Unique Ports
+        # 2. Download the OFFICIAL file from Monero (Guaranteed clean C++)
+        wget https://raw.githubusercontent.com/monero-project/monero/master/src/cryptonote_config.h -O src/cryptonote_config.h
+
+        # 3. Apply Arcanum Branding (Search & Replace)
+        sed -i 's/CRYPTONOTE_NAME = "monero"/CRYPTONOTE_NAME = "arcanum"/g' src/cryptonote_config.h
         sed -i 's/P2P_DEFAULT_PORT = 18080/P2P_DEFAULT_PORT = 19990/g' src/cryptonote_config.h
         sed -i 's/RPC_DEFAULT_PORT = 18081/RPC_DEFAULT_PORT = 19991/g' src/cryptonote_config.h
-
-        # 4. Set Unique Nonce (Creates the new blockchain)
         sed -i 's/GENESIS_NONCE = 10000/GENESIS_NONCE = 7777/g' src/cryptonote_config.h
 
     - name: Compile Static (Bulletproof)
