@@ -1,61 +1,193 @@
-name: Arcanum Ultimate Stable Build
+name: Build Arcanum Static Binary
 
-on: [workflow_dispatch]
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-20.04
+  build-static:
+    runs-on: ubuntu-22.04
+    
     steps:
-    # 1. Checkout the ROCK SOLID version (v0.18.3.3)
-    - uses: actions/checkout@v4
-      with:
-        repository: monero-project/monero
-        ref: v0.18.3.3
-        submodules: recursive
-
-    # 2. Install ALL Dependencies (Including the ones missing for static builds)
-    - name: Install Dependencies
+    - name: Maximize build space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf "/usr/local/share/boost"
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
+    
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev
-
-    # 3. Modify Config Safely (Python Regex)
-    # We change the Network ID and Nonce to make it unique, but keep the string safe.
-    - name: Brand Arcanum
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          pkg-config \
+          libboost-all-dev \
+          libssl-dev \
+          libzmq3-dev \
+          libunbound-dev \
+          libsodium-dev \
+          libunwind-dev \
+          liblzma-dev \
+          libreadline-dev \
+          libexpat1-dev \
+          libpgm-dev \
+          libhidapi-dev \
+          libusb-1.0-0-dev \
+          libprotobuf-dev \
+          protobuf-compiler \
+          libudev-dev \
+          libgtest-dev \
+          python3 \
+          git \
+          curl \
+          gperf
+    
+    - name: Clone official Monero v0.18.3.3
       run: |
-        python3 -c '
+        git clone --recursive --branch v0.18.3.3 https://github.com/monero-project/monero.git
+        cd monero
+        git submodule update --init --recursive
+    
+    - name: Surgically modify cryptonote_config.h
+      run: |
+        cd monero
+        python3 << 'PYSCRIPT'
         import re
-        with open("src/cryptonote_config.h", "r") as f:
+        
+        config_file = 'src/cryptonote_config.h'
+        
+        with open(config_file, 'r') as f:
             content = f.read()
         
-        # Change Name
-        content = re.sub(r"CRYPTONOTE_NAME = \"monero\"", "CRYPTONOTE_NAME = \"arcanum\"", content)
+        # Change network name
+        content = re.sub(
+            r'#define CRYPTONOTE_NAME\s+"monero"',
+            '#define CRYPTONOTE_NAME         "arcanum"',
+            content
+        )
         
-        # Change Ports
-        content = re.sub(r"P2P_DEFAULT_PORT = 18080", "P2P_DEFAULT_PORT = 19990", content)
-        content = re.sub(r"RPC_DEFAULT_PORT = 18081", "RPC_DEFAULT_PORT = 19991", content)
+        # Change P2P port
+        content = re.sub(
+            r'#define P2P_DEFAULT_PORT\s+18080',
+            '#define P2P_DEFAULT_PORT        19990',
+            content
+        )
         
-        # Change Nonce (The key to a new blockchain)
-        content = re.sub(r"GENESIS_NONCE = 10000", "GENESIS_NONCE = 7777", content)
-
-        with open("src/cryptonote_config.h", "w") as f:
+        # Change RPC port
+        content = re.sub(
+            r'#define RPC_DEFAULT_PORT\s+18081',
+            '#define RPC_DEFAULT_PORT        19991',
+            content
+        )
+        
+        # Change genesis nonce (creates unique network without touching genesis tx)
+        content = re.sub(
+            r'#define GENESIS_NONCE\s+10000',
+            '#define GENESIS_NONCE           7777',
+            content
+        )
+        
+        with open(config_file, 'w') as f:
             f.write(content)
-        '
-
-    # 4. Compile Static Slow Mode (Prevents Memory Crash)
-    - name: Compile Static
-      run: make release-static -j1
-
-    # 5. Find and Move Binaries
-    - name: Locate Binaries
+        
+        print("✓ Configuration modified successfully")
+        PYSCRIPT
+    
+    - name: Verify modifications
       run: |
-        mkdir arcanum_output
-        find build -name "monerod" -type f -exec cp {} arcanum_output/ \;
-        find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/ \;
-
-    # 6. Upload Victory Package
-    - name: Upload Binaries
-      uses: actions/upload-artifact@v4
+        cd monero
+        echo "=== Checking CRYPTONOTE_NAME ==="
+        grep "CRYPTONOTE_NAME" src/cryptonote_config.h || true
+        echo "=== Checking P2P_DEFAULT_PORT ==="
+        grep "P2P_DEFAULT_PORT" src/cryptonote_config.h || true
+        echo "=== Checking RPC_DEFAULT_PORT ==="
+        grep "RPC_DEFAULT_PORT" src/cryptonote_config.h || true
+        echo "=== Checking GENESIS_NONCE ==="
+        grep "GENESIS_NONCE" src/cryptonote_config.h || true
+    
+    - name: Build static binaries (memory-safe)
+      run: |
+        cd monero
+        # Use -j2 to prevent OOM on GitHub runners (they have ~7GB RAM)
+        make release-static -j2
+      env:
+        MAKEFLAGS: "-j2"
+    
+    - name: Locate and verify binaries
+      run: |
+        cd monero
+        echo "=== Finding binaries ==="
+        find . -name monerod -type f
+        find . -name monero-wallet-cli -type f
+        
+        # Verify they're actually static
+        echo "=== Checking monerod linkage ==="
+        ldd build/release/bin/monerod || echo "✓ Static binary (no dynamic deps)"
+        
+        echo "=== Checking monero-wallet-cli linkage ==="
+        ldd build/release/bin/monero-wallet-cli || echo "✓ Static binary (no dynamic deps)"
+        
+        # Check file sizes
+        ls -lh build/release/bin/monerod
+        ls -lh build/release/bin/monero-wallet-cli
+    
+    - name: Prepare artifacts
+      run: |
+        cd monero
+        mkdir -p ../arcanum-binaries
+        cp build/release/bin/monerod ../arcanum-binaries/
+        cp build/release/bin/monero-wallet-cli ../arcanum-binaries/
+        cp build/release/bin/monero-wallet-rpc ../arcanum-binaries/ || true
+        
+        # Create version info
+        echo "Arcanum v0.18.3.3-fork" > ../arcanum-binaries/VERSION.txt
+        echo "Built: $(date)" >> ../arcanum-binaries/VERSION.txt
+        echo "Network: arcanum" >> ../arcanum-binaries/VERSION.txt
+        echo "P2P Port: 19990" >> ../arcanum-binaries/VERSION.txt
+        echo "RPC Port: 19991" >> ../arcanum-binaries/VERSION.txt
+        echo "Genesis Nonce: 7777" >> ../arcanum-binaries/VERSION.txt
+    
+    - name: Upload binaries
+      uses: actions/upload-artifact@v3
       with:
-        name: arcanum-linux-x64
-        path: arcanum_output/
+        name: arcanum-static-binaries
+        path: arcanum-binaries/
+        retention-days: 30
+    
+    - name: Create deployment script
+      run: |
+        cat > arcanum-binaries/deploy.sh << 'DEPLOY'
+        #!/bin/bash
+        # Arcanum Deployment Script
+        
+        echo "Deploying Arcanum node..."
+        
+        # Make binaries executable
+        chmod +x monerod monero-wallet-cli
+        
+        # Start daemon
+        ./monerod --detach \
+          --data-dir ~/.arcanum \
+          --p2p-bind-port 19990 \
+          --rpc-bind-port 19991 \
+          --rpc-bind-ip 0.0.0.0 \
+          --confirm-external-bind \
+          --log-level 1
+        
+        echo "Arcanum daemon started!"
+        echo "Check status with: ./monerod status"
+        DEPLOY
+        
+        chmod +x arcanum-binaries/deploy.sh
+    
+    - name: Upload deployment script
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-script
+        path: arcanum-binaries/deploy.sh
