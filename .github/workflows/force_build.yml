@@ -1,39 +1,50 @@
-name: Arcanum Official Mirror Build
+name: Arcanum Ultimate Stable Build
 
 on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     steps:
-    # 1. Download the OFFICIAL Monero Code (Guaranteed Clean)
+    # 1. Checkout the ROCK SOLID version (v0.18.3.3)
     - uses: actions/checkout@v4
       with:
         repository: monero-project/monero
-        ref: v0.18.3.4
+        ref: v0.18.3.3
         submodules: recursive
 
-    # 2. Install Dependencies
-    - name: Install Tools
-      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
-
-    # 3. Apply Arcanum Identity (Simple Swap)
-    # We do NOT rewrite the file. We just swap specific numbers.
-    - name: Brand the Code
+    # 2. Install ALL Dependencies (Including the ones missing for static builds)
+    - name: Install Dependencies
       run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev
+
+    # 3. Modify Config Safely (Python Regex)
+    # We change the Network ID and Nonce to make it unique, but keep the string safe.
+    - name: Brand Arcanum
+      run: |
+        python3 -c '
+        import re
+        with open("src/cryptonote_config.h", "r") as f:
+            content = f.read()
+        
         # Change Name
-        sed -i 's/CRYPTONOTE_NAME = "monero"/CRYPTONOTE_NAME = "arcanum"/g' src/cryptonote_config.h
+        content = re.sub(r"CRYPTONOTE_NAME = \"monero\"", "CRYPTONOTE_NAME = \"arcanum\"", content)
         
         # Change Ports
-        sed -i 's/18080/19990/g' src/cryptonote_config.h
-        sed -i 's/18081/19991/g' src/cryptonote_config.h
+        content = re.sub(r"P2P_DEFAULT_PORT = 18080", "P2P_DEFAULT_PORT = 19990", content)
+        content = re.sub(r"RPC_DEFAULT_PORT = 18081", "RPC_DEFAULT_PORT = 19991", content)
         
-        # Change Nonce (This creates the unique blockchain)
-        sed -i 's/GENESIS_NONCE = 10000/GENESIS_NONCE = 7777/g' src/cryptonote_config.h
+        # Change Nonce (The key to a new blockchain)
+        content = re.sub(r"GENESIS_NONCE = 10000", "GENESIS_NONCE = 7777", content)
 
-    # 4. Compile Static (Bulletproof for Chromebooks)
+        with open("src/cryptonote_config.h", "w") as f:
+            f.write(content)
+        '
+
+    # 4. Compile Static Slow Mode (Prevents Memory Crash)
     - name: Compile Static
-      run: make release-static -j2
+      run: make release-static -j1
 
     # 5. Find and Move Binaries
     - name: Locate Binaries
