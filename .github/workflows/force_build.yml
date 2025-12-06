@@ -1,4 +1,4 @@
-name: Arcanum Production Build
+name: Arcanum Clean Source Build
 
 on: [workflow_dispatch]
 
@@ -6,52 +6,45 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-    # 1. Checkout a STABLE version (Not Master) to prevent errors
+    # 1. Download OFFICIAL Monero Code (Ignores your broken repo files)
     - uses: actions/checkout@v4
       with:
+        repository: monero-project/monero
         ref: v0.18.3.4
         submodules: recursive
 
-    - name: Install Tools
-      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3
+    # 2. Install the Compiler Tools
+    - name: Install Dependencies
+      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
 
-    - name: Rebrand Code (Python Script)
+    # 3. Apply Arcanum Identity (Surgical Modifications)
+    - name: Brand the Code
       run: |
-        python3 -c '
-        import fileinput
-        import sys
-
-        # Define changes
-        # We leave GENESIS_TX alone to prevent parse errors. 
-        # Changing the NONCE is enough to create a unique blockchain.
+        # Change Name
+        sed -i 's/CRYPTONOTE_NAME = "monero"/CRYPTONOTE_NAME = "arcanum"/' src/cryptonote_config.h
         
-        replacements = {
-            "std::string const CRYPTONOTE_NAME = \"monero\";": "std::string const CRYPTONOTE_NAME = \"arcanum\";",
-            "P2P_DEFAULT_PORT = 18080;": "P2P_DEFAULT_PORT = 19990;",
-            "RPC_DEFAULT_PORT = 18081;": "RPC_DEFAULT_PORT = 19991;",
-            "GENESIS_NONCE = 10000;": "GENESIS_NONCE = 7777;"
-        }
+        # Change Ports
+        sed -i 's/P2P_DEFAULT_PORT = 18080/P2P_DEFAULT_PORT = 19990/' src/cryptonote_config.h
+        sed -i 's/RPC_DEFAULT_PORT = 18081/RPC_DEFAULT_PORT = 19991/' src/cryptonote_config.h
+        
+        # Change Nonce (Creates Unique Blockchain)
+        sed -i 's/GENESIS_NONCE = 10000/GENESIS_NONCE = 7777/' src/cryptonote_config.h
+        
+        # Verify Changes (Print to log)
+        grep -E "CRYPTONOTE_NAME|DEFAULT_PORT|GENESIS_NONCE" src/cryptonote_config.h
 
-        # Process the file line by line
-        for line in fileinput.input("src/cryptonote_config.h", inplace=True):
-            original_line = line.strip()
-            # Check if this line needs replacing
-            for search, replace in replacements.items():
-                if search in original_line:
-                    line = line.replace(search, replace)
-            sys.stdout.write(line)
-        '
+    # 4. Build Static Binary (Low Memory Mode to prevent crashes)
+    - name: Compile Static
+      run: make release-static -j1
 
-    - name: Compile Static (Bulletproof)
-      run: make release-static -j2
-
-    - name: Find and Move Binaries
+    # 5. Find the files wherever they land
+    - name: Locate Binaries
       run: |
         mkdir arcanum_output
-        # Find the files wherever they are hiding
         find build -name "monerod" -type f -exec cp {} arcanum_output/ \;
         find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/ \;
 
+    # 6. Upload the Victory Package
     - name: Upload Binaries
       uses: actions/upload-artifact@v4
       with:
