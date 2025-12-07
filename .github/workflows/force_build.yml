@@ -1,102 +1,335 @@
-name: Arcanum Hardened Build
+name: Arcanum Turbo Build (Smart Fallback)
 
 on: [workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-20.04
-    timeout-minutes: 360  # 6 hours (Safe for slow builds)
-
+    timeout-minutes: 120
+    
     steps:
-    # 1. Checkout Official Monero v0.18.3.3
-    - uses: actions/checkout@v4
-      with:
-        repository: monero-project/monero
-        ref: v0.18.3.3
-        submodules: recursive
-
-    # 2. Install ALL Dependencies
-    - name: Install Build Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev
-
-    # 3. FORCE OVERWRITE Config (The "Arcanum Injection")
-    # This guarantees the file is correct, no matter what.
-    - name: Write Arcanum Config
-      run: |
-        python3 -c '
-        config_content = r"""
-        #pragma once
-        #include <string>
-        #include <boost/uuid/uuid.hpp>
-
-        #define CRYPTONOTE_DNS_TIMEOUT_MS 20000
-
-        namespace config
-        {
-          uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 239;
-          uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 240;
-          uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 241;
-          uint16_t const P2P_DEFAULT_PORT = 19990;
-          uint16_t const RPC_DEFAULT_PORT = 19991;
-          uint16_t const ZMQ_RPC_DEFAULT_PORT = 19992;
-          boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x10}};
-          std::string const CRYPTONOTE_NAME = "arcanum";
-          std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-          uint32_t const GENESIS_NONCE = 7777;
-        }
-        namespace config
-        {
-          namespace testnet
+      # 1. Add Swap Memory (Allows -j2 safely)
+      - name: Enable Swap Memory
+        run: |
+          sudo fallocate -l 7G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "✓ Added 7GB Swap"
+          free -h
+      
+      # 2. Checkout Monero Source
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          repository: monero-project/monero
+          ref: v0.18.3.3
+          submodules: recursive
+      
+      # 3. Install Dependencies + ccache
+      - name: Install Build Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential cmake pkg-config ccache \
+            libboost-all-dev libssl-dev libzmq3-dev \
+            libunbound-dev libsodium-dev libunwind8-dev \
+            liblzma-dev libreadline-dev libldns-dev \
+            libexpat1-dev libpgm-dev libhidapi-dev \
+            libusb-1.0-0-dev libprotobuf-dev protobuf-compiler \
+            libudev-dev python3 libgtest-dev
+          echo "✓ Dependencies installed"
+      
+      # 4. Setup ccache (Speeds up rebuilds)
+      - name: Setup Build Cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.ccache
+          key: arcanum-ccache-${{ github.sha }}
+          restore-keys: arcanum-ccache-
+      
+      # 5. Check Original Config Structure
+      - name: Analyze Config File
+        run: |
+          echo "=== ORIGINAL CONFIG ANALYSIS ==="
+          echo "File size: $(wc -l < src/cryptonote_config.h) lines"
+          echo "File bytes: $(wc -c < src/cryptonote_config.h) bytes"
+          echo ""
+          echo "Namespaces found:"
+          grep "namespace" src/cryptonote_config.h || true
+          echo ""
+          echo "Key constants found:"
+          grep -E "DIFFICULTY_TARGET|MONEY_SUPPLY|EMISSION_SPEED" src/cryptonote_config.h || echo "Not found (might be elsewhere)"
+      
+      # 6. Smart Config Patching (Try replacement, fallback to surgical)
+      - name: Brand as Arcanum
+        run: |
+          python3 << 'ENDPYTHON'
+          import sys
+          import re
+          
+          config_path = "src/cryptonote_config.h"
+          backup_path = config_path + ".backup"
+          
+          print("=" * 70)
+          print("ARCANUM CONFIG PATCHER - SMART MODE")
+          print("=" * 70)
+          
+          # Read and backup original
+          with open(config_path, "r") as f:
+              original_content = f.read()
+          
+          with open(backup_path, "w") as f:
+              f.write(original_content)
+          
+          original_lines = len(original_content.splitlines())
+          print(f"\n✓ Original config: {original_lines} lines")
+          print(f"✓ Backup created: {backup_path}")
+          
+          # Check if config is "simple" (< 100 lines = safe to replace)
+          if original_lines < 100:
+              print(f"\n→ Config is simple ({original_lines} lines)")
+              print("→ Using REPLACEMENT strategy")
+              
+              # Your full replacement config
+              replacement_config = r'''#pragma once
+          #include <string>
+          #include <boost/uuid/uuid.hpp>
+          
+          #define CRYPTONOTE_DNS_TIMEOUT_MS 20000
+          
+          namespace config
           {
-            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
-            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-            uint16_t const P2P_DEFAULT_PORT = 28080;
-            uint16_t const RPC_DEFAULT_PORT = 28081;
-            uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
-            boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x11}};
+            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 239;
+            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 240;
+            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 241;
+            uint16_t const P2P_DEFAULT_PORT = 19990;
+            uint16_t const RPC_DEFAULT_PORT = 19991;
+            uint16_t const ZMQ_RPC_DEFAULT_PORT = 19992;
+            boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x10}};
+            std::string const CRYPTONOTE_NAME = "arcanum";
             std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-            uint32_t const GENESIS_NONCE = 10001;
+            uint32_t const GENESIS_NONCE = 7777;
           }
-          namespace stagenet
+          
+          namespace config
           {
-            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
-            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-            uint16_t const P2P_DEFAULT_PORT = 38080;
-            uint16_t const RPC_DEFAULT_PORT = 38081;
-            uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
-            boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x12}};
-            std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-            uint32_t const GENESIS_NONCE = 10002;
+            namespace testnet
+            {
+              uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
+              uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
+              uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
+              uint16_t const P2P_DEFAULT_PORT = 28080;
+              uint16_t const RPC_DEFAULT_PORT = 28081;
+              uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
+              boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x11}};
+              std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+              uint32_t const GENESIS_NONCE = 10001;
+            }
+            
+            namespace stagenet
+            {
+              uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
+              uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
+              uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
+              uint16_t const P2P_DEFAULT_PORT = 38080;
+              uint16_t const RPC_DEFAULT_PORT = 38081;
+              uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
+              boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x12}};
+              std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+              uint32_t const GENESIS_NONCE = 10002;
+            }
           }
-        }
-        """
-        
-        with open("src/cryptonote_config.h", "w") as f:
-            f.write(config_content)
-        
-        print("✓ Arcanum Configuration Injected Successfully")
-        '
-
-    # 4. Compile Static (Safe Mode)
-    - name: Build Static Binaries
-      run: |
-        echo "Starting build..."
-        make release-static -j1
-
-    # 5. Search and Rescue Binaries
-    - name: Prepare Artifacts
-      run: |
-        mkdir arcanum_output
-        find build -name "monerod" -type f -exec cp {} arcanum_output/arcanumd \;
-        find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/arcanum-wallet-cli \;
-
-    # 6. Upload
-    - name: Upload Binaries
-      uses: actions/upload-artifact@v4
-      with:
-        name: arcanum-linux-x64-static
-        path: arcanum_output/
+          '''
+              
+              with open(config_path, "w") as f:
+                  f.write(replacement_config)
+              
+              print("✓ Config replaced successfully")
+              
+          else:
+              print(f"\n→ Config is complex ({original_lines} lines)")
+              print("→ Using SURGICAL EDIT strategy")
+              
+              content = original_content
+              changes = []
+              
+              # Surgical modifications
+              if re.search(r'std::string\s+const\s+CRYPTONOTE_NAME', content):
+                  content = re.sub(
+                      r'(std::string\s+const\s+CRYPTONOTE_NAME\s*=\s*)"[^"]*"',
+                      r'\1"arcanum"',
+                      content
+                  )
+                  changes.append("Name → arcanum")
+              
+              if re.search(r'uint16_t\s+const\s+P2P_DEFAULT_PORT', content):
+                  content = re.sub(
+                      r'(uint16_t\s+const\s+P2P_DEFAULT_PORT\s*=\s*)18080',
+                      r'\g<1>19990',
+                      content,
+                      count=1
+                  )
+                  changes.append("P2P port → 19990")
+              
+              if re.search(r'uint16_t\s+const\s+RPC_DEFAULT_PORT', content):
+                  content = re.sub(
+                      r'(uint16_t\s+const\s+RPC_DEFAULT_PORT\s*=\s*)18081',
+                      r'\g<1>19991',
+                      content,
+                      count=1
+                  )
+                  changes.append("RPC port → 19991")
+              
+              if re.search(r'uint16_t\s+const\s+ZMQ_RPC_DEFAULT_PORT', content):
+                  content = re.sub(
+                      r'(uint16_t\s+const\s+ZMQ_RPC_DEFAULT_PORT\s*=\s*)18082',
+                      r'\g<1>19992',
+                      content,
+                      count=1
+                  )
+                  changes.append("ZMQ port → 19992")
+              
+              if re.search(r'uint32_t\s+const\s+GENESIS_NONCE', content):
+                  content = re.sub(
+                      r'(uint32_t\s+const\s+GENESIS_NONCE\s*=\s*)\d+',
+                      r'\g<1>7777',
+                      content,
+                      count=1
+                  )
+                  changes.append("Genesis nonce → 7777")
+              
+              if re.search(r'boost::uuids::uuid\s+const\s+NETWORK_ID', content):
+                  content = re.sub(
+                      r'(boost::uuids::uuid\s+const\s+NETWORK_ID\s*=\s*\{\{)[^}]+(\}\})',
+                      r'\g<1>0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x10\2',
+                      content,
+                      count=1
+                  )
+                  changes.append("Network UUID → custom")
+              
+              with open(config_path, "w") as f:
+                  f.write(content)
+              
+              print(f"\n✓ Applied {len(changes)} surgical edits:")
+              for change in changes:
+                  print(f"  • {change}")
+          
+          # Verify new config
+          with open(config_path, "r") as f:
+              new_content = f.read()
+          
+          new_lines = len(new_content.splitlines())
+          print(f"\n✓ New config: {new_lines} lines")
+          print("=" * 70)
+          ENDPYTHON
+      
+      # 7. Verify Final Config
+      - name: Verify Configuration
+        run: |
+          echo "=== FINAL CONFIG VERIFICATION ==="
+          echo ""
+          grep "CRYPTONOTE_NAME" src/cryptonote_config.h | head -2
+          echo ""
+          grep "DEFAULT_PORT" src/cryptonote_config.h | head -5
+          echo ""
+          grep "GENESIS_NONCE" src/cryptonote_config.h | head -2
+          echo ""
+          echo "✓ Config ready for build"
+      
+      # 8. Build with ccache + 2 cores
+      - name: Compile Static Binaries
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          export CC="ccache gcc"
+          export CXX="ccache g++"
+          export CCACHE_DIR=~/.ccache
+          
+          echo "════════════════════════════════════════════════════════"
+          echo "  STARTING TURBO BUILD"
+          echo "  Cores: 2 (-j2)"
+          echo "  Cache: ccache enabled"
+          echo "  Swap: 7GB available"
+          echo "  Expected: 35-60 minutes"
+          echo "════════════════════════════════════════════════════════"
+          
+          START=$SECONDS
+          make release-static -j2
+          EXIT=$?
+          ELAPSED=$((SECONDS - START))
+          
+          echo ""
+          if [ $EXIT -eq 0 ]; then
+            echo "✓ BUILD SUCCESS in $((ELAPSED/60))m $((ELAPSED%60))s"
+            ccache -s
+          else
+            echo "❌ BUILD FAILED (Exit: $EXIT) after $((ELAPSED/60))m"
+            exit 1
+          fi
+      
+      # 9. Verify Binaries
+      - name: Verify Build Output
+        run: |
+          DAEMON=$(find build -name "monerod" -type f 2>/dev/null | head -1)
+          WALLET=$(find build -name "monero-wallet-cli" -type f 2>/dev/null | head -1)
+          
+          if [ -z "$DAEMON" ] || [ -z "$WALLET" ]; then
+            echo "❌ Binaries not found!"
+            exit 1
+          fi
+          
+          echo "✓ Daemon: $DAEMON"
+          echo "✓ Wallet: $WALLET"
+          
+          chmod +x "$DAEMON"
+          "$DAEMON" --version | head -3
+      
+      # 10. Package
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p arcanum_output
+          
+          find build -name "monerod" -type f -exec cp {} arcanum_output/arcanumd \;
+          find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/arcanum-wallet-cli \;
+          find build -name "monero-wallet-rpc" -type f -exec cp {} arcanum_output/arcanum-wallet-rpc \; 2>/dev/null || true
+          
+          cat > arcanum_output/README.txt << 'EOF'
+          ╔════════════════════════════════════════════════════════════╗
+          ║              ARCANUM - Custom Monero Fork                  ║
+          ╚════════════════════════════════════════════════════════════╝
+          
+          Network:      arcanum
+          P2P Port:     19990
+          RPC Port:     19991
+          Genesis:      7777
+          
+          Quick Start:
+            ./arcanumd --data-dir ./arcanum_data
+            ./arcanum-wallet-cli
+          EOF
+          
+          cat > arcanum_output/start.sh << 'EOF'
+          #!/bin/bash
+          ./arcanumd --data-dir ./arcanum_data --detach
+          echo "✓ Arcanum node started"
+          EOF
+          chmod +x arcanum_output/start.sh
+          
+          ls -lh arcanum_output/
+      
+      # 11. Upload
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: arcanum-linux-turbo
+          path: arcanum_output/
+          if-no-files-found: error
+      
+      # 12. Success
+      - name: Complete
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════════════════╗"
+          echo "║          ✓ ARCANUM TURBO BUILD SUCCESS ✓              ║"
+          echo "║          Time: $((SECONDS/60)) minutes                      ║"
+          echo "╚════════════════════════════════════════════════════════╝"
