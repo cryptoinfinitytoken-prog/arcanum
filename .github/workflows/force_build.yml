@@ -1,15 +1,15 @@
-name: Arcanum Auto-Builder
+name: Arcanum Golden Build
 
 on: [workflow_dispatch]
 
 jobs:
   build:
-    # 1. Use the runner that worked for you before
+    # 1. Use the runner that WORKED for you before
     runs-on: ubuntu-latest
     timeout-minutes: 120
     
     steps:
-    # 2. SAFETY: Enable Swap (Prevents random crashes)
+    # 2. SAFETY: Enable Swap (This saved us from the memory crash last time)
     - name: Enable Swap Memory
       run: |
         sudo fallocate -l 7G /swapfile
@@ -22,7 +22,7 @@ jobs:
       with:
         submodules: recursive
 
-    # 4. Install Dependencies
+    # 4. Install Dependencies (The list that worked)
     - name: Install Dependencies
       run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev
 
