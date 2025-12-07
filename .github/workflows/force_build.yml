@@ -1,97 +1,84 @@
-name: Arcanum Queue Jumper
+name: Arcanum Time Capsule Build
 
 on: [workflow_dispatch]
 
 jobs:
   build:
-    # 1. WE USE 'ubuntu-latest' TO SKIP THE QUEUE
+    # 1. Use Fastest Available Hardware
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    
+    # 2. CRITICAL: Run inside an OLD Linux container (Fixes OpenSSL Error)
+    container:
+      image: ubuntu:20.04
+      options: --privileged
+
+    timeout-minutes: 180
     
     steps:
-    # 2. ENABLE SWAP MEMORY (Critical for ubuntu-latest to prevent crashing)
-    - name: Enable Swap
+    # 3. Setup the Container Environment
+    - name: Prepare Container
       run: |
-        sudo fallocate -l 7G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
-        echo "✓ Enabled 7GB Swap Memory"
-        free -h
+        # Disable timezone prompts
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update
+        # Install basics needed for GitHub Actions to work
+        apt-get install -y git sudo curl tar unzip
 
-    # 3. Checkout Code
+    # 4. Checkout Official Monero
     - uses: actions/checkout@v4
       with:
         repository: monero-project/monero
         ref: v0.18.3.3
         submodules: recursive
 
-    # 4. Install Dependencies
-    - name: Install Tools
-      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev
+    # 5. Install Dependencies (For Ubuntu 20.04)
+    - name: Install Build Tools
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev
 
-    # 5. Overwrite Config (The Python Fix)
-    - name: Configure Arcanum
+    # 6. Apply Arcanum Identity (Safe Python Method)
+    - name: Brand Arcanum
       run: |
         python3 -c '
-        config_content = r"""
-        #pragma once
-        #include <string>
-        #include <boost/uuid/uuid.hpp>
-        #define CRYPTONOTE_DNS_TIMEOUT_MS 20000
-        namespace config {
-          uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 239;
-          uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 240;
-          uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 241;
-          uint16_t const P2P_DEFAULT_PORT = 19990;
-          uint16_t const RPC_DEFAULT_PORT = 19991;
-          uint16_t const ZMQ_RPC_DEFAULT_PORT = 19992;
-          boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x10}};
-          std::string const CRYPTONOTE_NAME = "arcanum";
-          std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-          uint32_t const GENESIS_NONCE = 7777;
-        }
-        namespace config {
-          namespace testnet {
-            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
-            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-            uint16_t const P2P_DEFAULT_PORT = 28080;
-            uint16_t const RPC_DEFAULT_PORT = 28081;
-            uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
-            boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x11}};
-            std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-            uint32_t const GENESIS_NONCE = 10001;
-          }
-          namespace stagenet {
-            uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
-            uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
-            uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-            uint16_t const P2P_DEFAULT_PORT = 38080;
-            uint16_t const RPC_DEFAULT_PORT = 38081;
-            uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
-            boost::uuids::uuid const NETWORK_ID = {{0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x12}};
-            std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-            uint32_t const GENESIS_NONCE = 10002;
-          }
-        }
-        """
-        with open("src/cryptonote_config.h", "w") as f:
-            f.write(config_content)
+        import sys
+        import re
+        
+        config_path = "src/cryptonote_config.h"
+        
+        with open(config_path, "r") as f:
+            content = f.read()
+            
+        # 1. Change Name
+        content = re.sub(r"CRYPTONOTE_NAME = \"monero\"", "CRYPTONOTE_NAME = \"arcanum\"", content)
+        
+        # 2. Change Ports (18080 -> 19990)
+        content = content.replace("18080", "19990")
+        content = content.replace("18081", "19991")
+        
+        # 3. Change Nonce (Unique Chain)
+        content = content.replace("GENESIS_NONCE = 10000", "GENESIS_NONCE = 7777")
+        
+        with open(config_path, "w") as f:
+            f.write(content)
+        
+        print("✓ Configuration Patched")
         '
 
-    # 6. Compile Static (With -j2 thanks to Swap)
-    - name: Compile
+    # 7. Compile Static (Safe -j2)
+    # We use -j2 because we don't have Swap in a container, but 20.04 uses less RAM.
+    - name: Compile Static
       run: make release-static -j2
 
-    # 7. Search & Rescue
+    # 8. Find and Rescue Binaries
     - name: Locate Binaries
       run: |
         mkdir arcanum_output
         find build -name "monerod" -type f -exec cp {} arcanum_output/arcanumd \;
         find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/arcanum-wallet-cli \;
 
-    # 8. Upload
+    # 9. Upload
     - name: Upload Binaries
       uses: actions/upload-artifact@v4
       with:
