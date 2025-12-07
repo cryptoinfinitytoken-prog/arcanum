@@ -4,8 +4,8 @@ on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 360  # 6 hour max
+    runs-on: ubuntu-latest
+    timeout-minutes: 90  # 1 hour 30mins max
     
     steps:
       # 1. Checkout Official Monero v0.18.3.3
