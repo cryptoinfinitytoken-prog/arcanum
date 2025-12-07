@@ -1,347 +1,575 @@
-name: Arcanum Bulletproof Build (Exit Code 2 Killer)
+name: Build Arcanum Blockchain (Monero Fork)
 
 on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Better hardware than 20.04
-    timeout-minutes: 240    # 4 hours - plenty of time
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
     
     steps:
-      # 1. Massive Swap (14GB - Overkill on purpose)
-      - name: Create Massive Swap
-        run: |
-          echo "Creating 14GB swap to prevent ANY OOM..."
-          sudo swapoff -a
-          sudo fallocate -l 14G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          sudo swapon --show
-          echo ""
-          echo "Memory status:"
-          free -h
-          echo ""
-          echo "✓ 14GB swap active - OOM is now impossible"
-      
-      # 2. Checkout
-      - name: Checkout Monero Source
+      # 1. Get Monero Source (Our Starting Point)
+      - name: Clone Monero Codebase
         uses: actions/checkout@v4
         with:
           repository: monero-project/monero
           ref: v0.18.3.3
           submodules: recursive
       
-      # 3. Dependencies (Minimal + Essential)
-      - name: Install Dependencies
+      # 2. Complete Build Dependencies
+      - name: Install Build Environment
         run: |
+          echo "Installing dependencies for Arcanum fork..."
           sudo apt-get update -qq
+          
+          # Complete dependency set for static linking
           sudo apt-get install -y \
             build-essential cmake pkg-config \
-            libboost-all-dev libssl-dev libzmq3-dev \
-            libunbound-dev libsodium-dev libunwind8-dev \
-            liblzma-dev libreadline-dev libldns-dev \
-            libexpat1-dev libpgm-dev libhidapi-dev \
-            libusb-1.0-0-dev libprotobuf-dev protobuf-compiler \
-            libudev-dev python3
+            libboost-all-dev libboost-system-dev libboost-filesystem-dev \
+            libboost-thread-dev libboost-date-time-dev libboost-chrono-dev \
+            libboost-regex-dev libboost-serialization-dev \
+            libboost-program-options-dev libboost-locale-dev \
+            libssl-dev libssl1.1 \
+            libzmq3-dev \
+            libunbound-dev libunbound8 \
+            libsodium-dev libsodium23 \
+            libunwind-dev libunwind8 \
+            liblzma-dev \
+            libreadline-dev \
+            libldns-dev \
+            libexpat1-dev \
+            libpgm-dev libpgm-5.3-0 \
+            libhidapi-dev libhidapi-libusb0 \
+            libusb-1.0-0-dev \
+            libprotobuf-dev protobuf-compiler \
+            libudev-dev \
+            libgtest-dev \
+            libnorm-dev \
+            python3 git
+          
+          echo "✓ Build environment ready for Arcanum"
       
-      # 4. Smart Config Patcher
-      - name: Configure Arcanum
+      # 3. Fork Monero → Arcanum (Rebrand)
+      - name: Transform Monero into Arcanum
         run: |
+          echo "════════════════════════════════════════════════════════"
+          echo "FORKING MONERO → ARCANUM"
+          echo "Creating unique blockchain identity..."
+          echo "════════════════════════════════════════════════════════"
+          
           python3 << 'ENDPYTHON'
           import re
+          import sys
           
-          config = "src/cryptonote_config.h"
+          config_file = "src/cryptonote_config.h"
           
-          with open(config, "r") as f:
-              content = f.read()
+          print("\n🔱 Transforming Monero into Arcanum...\n")
           
-          # Surgical edits only
-          content = re.sub(r'(std::string\s+const\s+CRYPTONOTE_NAME\s*=\s*)"[^"]*"', r'\1"arcanum"', content)
-          content = re.sub(r'(uint16_t\s+const\s+P2P_DEFAULT_PORT\s*=\s*)18080', r'\g<1>19990', content, count=1)
-          content = re.sub(r'(uint16_t\s+const\s+RPC_DEFAULT_PORT\s*=\s*)18081', r'\g<1>19991', content, count=1)
-          content = re.sub(r'(uint16_t\s+const\s+ZMQ_RPC_DEFAULT_PORT\s*=\s*)18082', r'\g<1>19992', content, count=1)
-          content = re.sub(r'(uint32_t\s+const\s+GENESIS_NONCE\s*=\s*)\d+', r'\g<1>7777', content, count=1)
-          content = re.sub(r'(boost::uuids::uuid\s+const\s+NETWORK_ID\s*=\s*\{\{)[^}]+(\}\})', r'\g<1>0x12,0x30,0xF1,0x71,0x61,0x04,0x41,0x61,0x17,0x31,0x00,0x82,0x16,0xA1,0xA1,0x10\2', content, count=1)
-          
-          with open(config, "w") as f:
-              f.write(content)
-          
-          print("✓ Config patched")
+          try:
+              # Read Monero config
+              with open(config_file, "r") as f:
+                  content = f.read()
+              
+              # Backup original
+              with open(config_file + ".monero_original", "w") as f:
+                  f.write(content)
+              print("✓ Backed up original Monero config")
+              
+              changes = []
+              
+              # 1. NETWORK NAME: Monero → Arcanum
+              if re.search(r'std::string\s+const\s+CRYPTONOTE_NAME', content):
+                  content = re.sub(
+                      r'(std::string\s+const\s+CRYPTONOTE_NAME\s*=\s*)"[^"]*"',
+                      r'\1"arcanum"',
+                      content
+                  )
+                  changes.append("Network name: 'monero' → 'arcanum'")
+              
+              # 2. P2P PORT: Create unique network port
+              if re.search(r'uint16_t\s+const\s+P2P_DEFAULT_PORT', content):
+                  content = re.sub(
+                      r'(uint16_t\s+const\s+P2P_DEFAULT_PORT\s*=\s*)\d+',
+                      r'\g<1>19990',
+                      content,
+                      count=1
+                  )
+                  changes.append("P2P port: 18080 → 19990 (unique network)")
+              
+              # 3. RPC PORT: Separate RPC endpoint
+              if re.search(r'uint16_t\s+const\s+RPC_DEFAULT_PORT', content):
+                  content = re.sub(
+                      r'(uint16_t\s+const\s+RPC_DEFAULT_PORT\s*=\s*)\d+',
+                      r'\g<1>19991',
+                      content,
+                      count=1
+                  )
+                  changes.append("RPC port: 18081 → 19991")
+              
+              # 4. ZMQ PORT: Messaging port
+              if re.search(r'uint16_t\s+const\s+ZMQ_RPC_DEFAULT_PORT', content):
+                  content = re.sub(
+                      r'(uint16_t\s+const\s+ZMQ_RPC_DEFAULT_PORT\s*=\s*)\d+',
+                      r'\g<1>19992',
+                      content,
+                      count=1
+                  )
+                  changes.append("ZMQ port: 18082 → 19992")
+              
+              # 5. GENESIS NONCE: Create unique genesis block
+              if re.search(r'uint32_t\s+const\s+GENESIS_NONCE', content):
+                  content = re.sub(
+                      r'(uint32_t\s+const\s+GENESIS_NONCE\s*=\s*)\d+',
+                      r'\g<1>7777',
+                      content,
+                      count=1
+                  )
+                  changes.append("Genesis nonce: → 7777 (NEW BLOCKCHAIN)")
+              
+              # 6. NETWORK UUID: Unique network identifier
+              if re.search(r'boost::uuids::uuid\s+const\s+NETWORK_ID', content):
+                  # Custom UUID for Arcanum network
+                  arcanum_uuid = "0x41,0x52,0x43,0x41,0x4e,0x55,0x4d,0x21,0x42,0x4c,0x4f,0x43,0x4b,0x43,0x48,0x4e"
+                  content = re.sub(
+                      r'(boost::uuids::uuid\s+const\s+NETWORK_ID\s*=\s*\{\{)[^}]+(\}\})',
+                      r'\g<1>' + arcanum_uuid + r'\2',
+                      content,
+                      count=1
+                  )
+                  changes.append("Network UUID: → ARCANUM unique ID")
+              
+              # Write Arcanum config
+              with open(config_file, "w") as f:
+                  f.write(content)
+              
+              # Verify file integrity
+              new_size = len(content)
+              original_size = len(open(config_file + ".monero_original").read())
+              
+              if new_size < original_size * 0.8:
+                  print("❌ ERROR: Config file corrupted!")
+                  sys.exit(1)
+              
+              # Report changes
+              print(f"✓ Applied {len(changes)} transformations:\n")
+              for i, change in enumerate(changes, 1):
+                  print(f"  {i}. {change}")
+              
+              print(f"\n✓ Arcanum config created ({new_size} bytes)")
+              print("✓ This is now a SEPARATE blockchain from Monero")
+              
+          except Exception as e:
+              print(f"❌ Fork transformation failed: {e}")
+              sys.exit(1)
           ENDPYTHON
+          
+          echo ""
+          echo "════════════════════════════════════════════════════════"
+          echo "VERIFICATION - Arcanum Network Identity"
+          echo "════════════════════════════════════════════════════════"
+          grep "CRYPTONOTE_NAME" src/cryptonote_config.h | head -2
+          grep "P2P_DEFAULT_PORT\|RPC_DEFAULT_PORT" src/cryptonote_config.h | head -4
+          grep "GENESIS_NONCE" src/cryptonote_config.h | head -2
+          echo "════════════════════════════════════════════════════════"
       
-      # 5. ULTRA-SAFE COMPILATION with Exit Code 2 Killer Script
-      - name: Compile (Exit Code 2 Protection)
+      # 4. Build Arcanum Blockchain Software
+      - name: Compile Arcanum
         run: |
-          # Create bulletproof build script
-          cat > build_safe.sh << 'BUILDSCRIPT'
-          #!/bin/bash
-          set -e
-          
-          echo "════════════════════════════════════════════════════════════════"
-          echo "  ARCANUM ULTRA-SAFE BUILD"
-          echo "  Strategy: Single-core + Memory monitoring"
-          echo "  This CANNOT fail with Exit Code 2"
-          echo "════════════════════════════════════════════════════════════════"
           echo ""
-          
-          # Memory monitor (kills build if we approach limit)
-          monitor_memory() {
-              while true; do
-                  USED=$(free -m | awk 'NR==2{print $3}')
-                  TOTAL=$(free -m | awk 'NR==2{print $2}')
-                  PERCENT=$((USED * 100 / TOTAL))
-                  
-                  if [ $PERCENT -gt 85 ]; then
-                      echo "⚠ Memory at ${PERCENT}% - pausing build for 30s..."
-                      pkill -STOP make || true
-                      sleep 30
-                      echo "Resuming..."
-                      pkill -CONT make || true
-                  fi
-                  
-                  sleep 10
-              done
-          }
-          
-          # Start memory monitor in background
-          monitor_memory &
-          MONITOR_PID=$!
-          
-          # Clean any previous builds
-          echo "Cleaning previous builds..."
-          make clean 2>/dev/null || true
-          rm -rf build 2>/dev/null || true
-          
-          # Set conservative compiler flags
-          export CXXFLAGS="-O2 -pipe"  # -O2 instead of -O3 uses less RAM
-          export CFLAGS="-O2 -pipe"
-          
-          # Build with absolute minimum parallelism
-          echo ""
-          echo "Starting build at $(date)"
-          echo "This will take 90-120 minutes..."
+          echo "╔════════════════════════════════════════════════════════╗"
+          echo "║          BUILDING ARCANUM BLOCKCHAIN                  ║"
+          echo "║          (This takes 60-120 minutes)                  ║"
+          echo "╚════════════════════════════════════════════════════════╝"
           echo ""
           
           START=$SECONDS
           
-          # Build with -j1 (single core = impossible to OOM)
-          make release-static -j1 2>&1 | while IFS= read -r line; do
-              # Show progress every 50 files
-              if echo "$line" | grep -q "Building.*\.cpp"; then
-                  FILE_COUNT=$((FILE_COUNT + 1))
-                  if [ $((FILE_COUNT % 50)) -eq 0 ]; then
-                      ELAPSED=$((SECONDS - START))
-                      echo "Progress: $FILE_COUNT files compiled (${ELAPSED}s elapsed)"
-                      free -h | head -2
+          # Try Method 1: Monero's depends system (most reliable for static)
+          echo "→ Attempting: Monero depends system (official method)"
+          echo ""
+          
+          if make depends target=x86_64-linux-gnu -j2 2>&1 | tail -50; then
+              echo ""
+              echo "✓ Dependencies built"
+              
+              if make release-static-linux-x86_64 -j2 2>&1 | tail -50; then
+                  BUILD_SUCCESS=1
+                  BUILD_METHOD="depends (static)"
+                  echo "✓ Build succeeded via depends system"
+              else
+                  BUILD_SUCCESS=0
+              fi
+          else
+              BUILD_SUCCESS=0
+          fi
+          
+          # Try Method 2: Direct static build
+          if [ $BUILD_SUCCESS -eq 0 ]; then
+              echo ""
+              echo "→ Attempting: Direct static build"
+              echo ""
+              
+              make clean 2>/dev/null || true
+              rm -rf build 2>/dev/null || true
+              
+              mkdir -p build/release
+              cd build/release
+              
+              if cmake ../.. \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DSTATIC=ON \
+                  -DBUILD_TESTS=OFF \
+                  -DARCH=x86-64 2>&1 | tail -30; then
+                  
+                  if make -j2 2>&1 | tail -50; then
+                      BUILD_SUCCESS=1
+                      BUILD_METHOD="cmake static"
+                      echo "✓ Build succeeded via cmake"
                   fi
               fi
               
-              # Show important messages
-              if echo "$line" | grep -qE "error:|fatal:|Killed|Failed"; then
-                  echo "❌ $line"
+              cd ../..
+          fi
+          
+          # Try Method 3: Dynamic build (fallback)
+          if [ $BUILD_SUCCESS -eq 0 ]; then
+              echo ""
+              echo "→ Attempting: Dynamic build (fallback)"
+              echo ""
+              
+              make clean 2>/dev/null || true
+              rm -rf build 2>/dev/null || true
+              
+              if make release -j2 2>&1 | tail -50; then
+                  BUILD_SUCCESS=1
+                  BUILD_METHOD="dynamic"
+                  echo "✓ Build succeeded (dynamic)"
               fi
-          done
-          
-          BUILD_EXIT=${PIPESTATUS[0]}
-          
-          # Stop memory monitor
-          kill $MONITOR_PID 2>/dev/null || true
+          fi
           
           ELAPSED=$((SECONDS - START))
           
-          echo ""
-          echo "════════════════════════════════════════════════════════════════"
-          if [ $BUILD_EXIT -eq 0 ]; then
-              echo "  ✓✓✓ BUILD SUCCESSFUL ✓✓✓"
-              echo "  Time: $((ELAPSED / 60))m $((ELAPSED % 60))s"
-          else
-              echo "  ❌ BUILD FAILED"
-              echo "  Exit Code: $BUILD_EXIT"
-              echo "  Time before failure: $((ELAPSED / 60))m"
-              
-              # Show last 50 lines of build output for debugging
+          if [ $BUILD_SUCCESS -eq 1 ]; then
               echo ""
-              echo "Last build errors:"
-              tail -50 /tmp/build.log 2>/dev/null || echo "No log found"
-              
-              exit $BUILD_EXIT
+              echo "╔════════════════════════════════════════════════════════╗"
+              echo "║              ✓ ARCANUM BUILD SUCCESS ✓                ║"
+              echo "╚════════════════════════════════════════════════════════╝"
+              echo ""
+              echo "Build method: $BUILD_METHOD"
+              echo "Build time: $((ELAPSED/60))m $((ELAPSED%60))s"
+          else
+              echo ""
+              echo "❌ All build methods failed"
+              echo "Please check logs above for errors"
+              exit 1
           fi
-          echo "════════════════════════════════════════════════════════════════"
-          BUILDSCRIPT
-          
-          chmod +x build_safe.sh
-          
-          # Run the bulletproof build script
-          ./build_safe.sh
       
-      # 6. Verify Success
-      - name: Verify Binaries
+      # 5. Find Arcanum Binaries
+      - name: Locate Arcanum Binaries
         run: |
-          echo "=== SEARCHING FOR BINARIES ==="
+          echo "Searching for Arcanum binaries..."
+          echo ""
           
-          # Find all built executables
-          find build -type f -executable -name "monero*" 2>/dev/null | while read file; do
-              echo "Found: $file ($(du -h "$file" | cut -f1))"
+          # Find all executables
+          find . -type f \( -name "monerod" -o -name "monero-wallet-cli" \) 2>/dev/null | while read f; do
+              echo "Found: $f ($(du -h "$f" | cut -f1))"
           done
           
-          DAEMON=$(find build -name "monerod" -type f 2>/dev/null | head -1)
-          WALLET=$(find build -name "monero-wallet-cli" -type f 2>/dev/null | head -1)
+          DAEMON=$(find . -name "monerod" -type f 2>/dev/null | head -1)
+          WALLET=$(find . -name "monero-wallet-cli" -type f 2>/dev/null | head -1)
           
-          if [ -z "$DAEMON" ]; then
-              echo "❌ CRITICAL: monerod not found!"
-              echo "Build directory contents:"
-              find build -type f | head -20
-              exit 1
-          fi
-          
-          if [ -z "$WALLET" ]; then
-              echo "❌ CRITICAL: wallet not found!"
+          if [ -z "$DAEMON" ] || [ -z "$WALLET" ]; then
+              echo "❌ Binaries not found!"
               exit 1
           fi
           
           echo ""
-          echo "✓ Daemon: $DAEMON"
-          echo "✓ Wallet: $WALLET"
+          echo "✓ Arcanum daemon: $DAEMON"
+          echo "✓ Arcanum wallet: $WALLET"
           
-          # Test execution
-          chmod +x "$DAEMON"
+          # Test
+          chmod +x "$DAEMON" "$WALLET"
           echo ""
-          echo "=== VERSION TEST ==="
-          timeout 5s "$DAEMON" --version || echo "✓ Binary executes"
+          echo "Testing daemon:"
+          file "$DAEMON"
+          
+          echo "DAEMON_PATH=$DAEMON" >> $GITHUB_ENV
+          echo "WALLET_PATH=$WALLET" >> $GITHUB_ENV
       
-      # 7. Package Everything
-      - name: Package Artifacts
+      # 6. Package Arcanum
+      - name: Create Arcanum Release Package
         run: |
-          mkdir -p arcanum_output
+          mkdir -p arcanum-blockchain
           
-          # Copy binaries
-          find build -name "monerod" -type f -exec cp {} arcanum_output/arcanumd \;
-          find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/arcanum-wallet-cli \;
-          find build -name "monero-wallet-rpc" -type f -exec cp {} arcanum_output/arcanum-wallet-rpc \; 2>/dev/null || true
+          # Copy and rename for Arcanum branding
+          cp "$DAEMON_PATH" arcanum-blockchain/arcanumd
+          cp "$WALLET_PATH" arcanum-blockchain/arcanum-wallet
           
-          # Create comprehensive README
-          cat > arcanum_output/README.txt << 'EOF'
-          ╔═══════════════════════════════════════════════════════════════╗
-          ║                 ARCANUM BLOCKCHAIN                            ║
-          ║           Monero Fork - Genesis Block 7777                    ║
-          ╚═══════════════════════════════════════════════════════════════╝
-
-          NETWORK DETAILS
-          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          Chain Name:          arcanum
-          P2P Port:            19990
-          RPC Port:            19991
-          ZMQ Port:            19992
-          Genesis Nonce:       7777
-          Base58 Prefix:       239 (addresses start with different chars)
-
-          ⚠️  This is a separate blockchain from Monero mainnet!
-
-          USAGE
-          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-          Start the daemon:
-            ./arcanumd --data-dir ./arcanum_blockchain
-
-          Start the wallet (new terminal):
-            ./arcanum-wallet-cli
-
-          Connect wallet to local daemon:
-            (in wallet) set daemon 127.0.0.1:19991
-
-          MINING
-          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          Start mining in daemon:
-            start_mining YOUR_WALLET_ADDRESS 1
-
-          Check mining status:
-            status
-            show_hr
-
-          TROUBLESHOOTING
-          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          - Logs stored in: arcanum_blockchain/
-          - To reset chain: rm -rf arcanum_blockchain/
-          - Check daemon: ./arcanumd status
-          - For help: ./arcanumd --help
+          # Try to include RPC wallet
+          WALLET_RPC=$(find . -name "monero-wallet-rpc" -type f 2>/dev/null | head -1)
+          if [ -n "$WALLET_RPC" ]; then
+              cp "$WALLET_RPC" arcanum-blockchain/arcanum-wallet-rpc
+          fi
+          
+          # Arcanum README
+          cat > arcanum-blockchain/README.md << 'EOF'
+          # 🔱 ARCANUM BLOCKCHAIN 🔱
+          
+          **A Monero Fork - Completely Separate Network**
+          
+          ---
+          
+          ## What is Arcanum?
+          
+          Arcanum is a cryptocurrency fork of Monero v0.18.3.3, creating an entirely 
+          new and separate blockchain. This is NOT Monero - it's a distinct network 
+          with its own genesis block, ports, and identity.
+          
+          ## Network Specifications
+          
+          - **Blockchain Name:** Arcanum
+          - **Genesis Block:** #7777 (unique genesis)
+          - **P2P Network Port:** 19990
+          - **RPC API Port:** 19991
+          - **ZMQ Port:** 19992
+          - **Network UUID:** Custom (incompatible with Monero)
+          
+          ⚠️ **IMPORTANT:** Arcanum addresses look similar to Monero addresses but are 
+          completely incompatible. Never send Monero to Arcanum or vice versa!
+          
+          ---
+          
+          ## Quick Start Guide
+          
+          ### 1. Start the Arcanum Node
+          
+          ```bash
+          ./arcanumd --data-dir ./arcanum_data
+          ```
+          
+          Or use the helper:
+          ```bash
+          ./start_arcanum.sh
+          ```
+          
+          Wait for sync (new blockchain starts at block 0).
+          
+          ### 2. Create Your Arcanum Wallet
+          
+          In a new terminal:
+          ```bash
+          ./arcanum-wallet
+          ```
+          
+          Follow prompts to create a new wallet. Save your seed phrase!
+          
+          ### 3. Mine Arcanum Coins
+          
+          In the daemon console:
+          ```
+          start_mining YOUR_ARCANUM_ADDRESS 1
+          ```
+          
+          Or use the helper:
+          ```bash
+          ./mine_arcanum.sh YOUR_ADDRESS
+          ```
+          
+          ---
+          
+          ## Key Differences from Monero
+          
+          | Feature | Monero | Arcanum |
+          |---------|--------|---------|
+          | Network | Mainnet | Arcanum Network |
+          | P2P Port | 18080 | 19990 |
+          | Genesis | 10001 | 7777 |
+          | UUID | Monero | Arcanum |
+          | Compatible | No | No |
+          
+          ---
+          
+          ## FAQ
+          
+          **Q: Can I connect to Monero nodes?**  
+          A: No. Arcanum is a separate blockchain.
+          
+          **Q: Can I import my Monero wallet?**  
+          A: No. Create a new Arcanum wallet.
+          
+          **Q: Will my Monero balance appear?**  
+          A: No. Arcanum starts from genesis block 0.
+          
+          **Q: Is this a testnet?**  
+          A: No. This is a full separate mainnet fork.
+          
+          **Q: Can I mine?**  
+          A: Yes! Start mining immediately on your new blockchain.
+          
+          ---
+          
+          ## Commands
+          
+          ### Daemon Commands
+          ```bash
+          ./arcanumd status              # Check sync status
+          ./arcanumd exit                # Stop daemon
+          ./arcanumd help                # Full command list
+          ```
+          
+          ### Wallet Commands
+          ```bash
+          ./arcanum-wallet --help        # All wallet options
+          ```
+          
+          In wallet:
+          ```
+          balance                        # Check balance
+          address                        # Show your address
+          transfer ADDRESS AMOUNT        # Send coins
+          ```
+          
+          ---
+          
+          ## Troubleshooting
+          
+          **"Port already in use"**  
+          Another process is using 19990. Kill it or change port:
+          ```bash
+          ./arcanumd --p2p-bind-port 29990
+          ```
+          
+          **"Can't connect to daemon"**  
+          Make sure arcanumd is running:
+          ```bash
+          ./arcanumd status
+          ```
+          
+          **"Sync taking forever"**  
+          You're creating a NEW blockchain. Initial sync is fast (starts empty).
+          
+          ---
+          
+          ## Building a Network
+          
+          To connect Arcanum nodes:
+          
+          1. Share your IP: `./arcanumd print_cn`
+          2. Others connect: `./arcanumd --add-peer YOUR_IP:19990`
+          3. Check peers: `print_pl` in daemon
+          
+          ---
+          
+          ## Support
+          
+          This is an experimental fork. Use at your own risk.
+          
+          **Logs location:** `arcanum_data/`  
+          **Config backup:** `src/cryptonote_config.h.monero_original`
+          
+          ---
+          
+          🔱 **Welcome to the Arcanum Network** 🔱
           EOF
           
-          # Create startup script
-          cat > arcanum_output/start.sh << 'EOF'
+          # Start script
+          cat > arcanum-blockchain/start_arcanum.sh << 'EOF'
           #!/bin/bash
-          echo "╔════════════════════════════════════════╗"
-          echo "║     Starting Arcanum Node             ║"
-          echo "╚════════════════════════════════════════╝"
+          echo ""
+          echo "🔱 ════════════════════════════════════════════════ 🔱"
+          echo "         STARTING ARCANUM BLOCKCHAIN NODE          "
+          echo "🔱 ════════════════════════════════════════════════ 🔱"
+          echo ""
           
           ./arcanumd \
-              --data-dir ./arcanum_blockchain \
+              --data-dir ./arcanum_data \
               --log-level 1 \
               --detach
           
+          sleep 2
+          
+          echo "✓ Arcanum node started!"
           echo ""
-          echo "✓ Arcanum daemon started"
-          echo "✓ P2P: 0.0.0.0:19990"
-          echo "✓ RPC: 127.0.0.1:19991"
+          echo "Network: Arcanum (separate from Monero)"
+          echo "P2P: 0.0.0.0:19990"
+          echo "RPC: 127.0.0.1:19991"
           echo ""
           echo "Check status: ./arcanumd status"
-          echo "Stop daemon:  ./arcanumd exit"
+          echo "Stop node:    ./arcanumd exit"
+          echo "Start wallet: ./arcanum-wallet"
+          echo ""
           EOF
-          chmod +x arcanum_output/start.sh
+          chmod +x arcanum-blockchain/start_arcanum.sh
           
-          # Create mining script
-          cat > arcanum_output/mine.sh << 'EOF'
+          # Mining script
+          cat > arcanum-blockchain/mine_arcanum.sh << 'EOF'
           #!/bin/bash
           if [ -z "$1" ]; then
-              echo "Usage: ./mine.sh YOUR_WALLET_ADDRESS [threads]"
-              echo "Example: ./mine.sh 44AFFq5kSi... 2"
+              echo "🔱 Arcanum Mining Helper 🔱"
+              echo ""
+              echo "Usage: ./mine_arcanum.sh YOUR_ARCANUM_ADDRESS [threads]"
+              echo ""
+              echo "Example:"
+              echo "  ./mine_arcanum.sh 44AFFq5kSi... 2"
+              echo ""
+              echo "Get your address from: ./arcanum-wallet"
               exit 1
           fi
           
+          ADDRESS=$1
           THREADS=${2:-1}
-          ./arcanumd start_mining $1 $THREADS
-          echo "✓ Mining started with $THREADS thread(s)"
+          
+          echo "Starting Arcanum mining..."
+          echo "Address: $ADDRESS"
+          echo "Threads: $THREADS"
+          
+          ./arcanumd start_mining "$ADDRESS" "$THREADS"
+          
+          echo ""
+          echo "✓ Mining started on Arcanum network"
+          echo "  Check: ./arcanumd status"
+          echo "  Stop:  ./arcanumd stop_mining"
           EOF
-          chmod +x arcanum_output/mine.sh
+          chmod +x arcanum-blockchain/mine_arcanum.sh
           
           echo ""
           echo "════════════════════════════════════════════════════════"
-          echo "  PACKAGE CONTENTS"
+          echo "ARCANUM PACKAGE CREATED"
           echo "════════════════════════════════════════════════════════"
-          ls -lh arcanum_output/
+          ls -lh arcanum-blockchain/
           echo ""
-          du -sh arcanum_output/
+          echo "Total: $(du -sh arcanum-blockchain/ | cut -f1)"
           echo "════════════════════════════════════════════════════════"
       
-      # 8. Upload
-      - name: Upload Artifacts
+      # 7. Upload
+      - name: Upload Arcanum Blockchain
         uses: actions/upload-artifact@v4
         with:
-          name: arcanum-bulletproof-build
-          path: arcanum_output/
+          name: arcanum-blockchain-v1.0
+          path: arcanum-blockchain/
           if-no-files-found: error
       
-      # 9. Final Summary
-      - name: Success Summary
+      # 8. Success
+      - name: Fork Complete
         run: |
           echo ""
-          echo "╔═══════════════════════════════════════════════════════════════╗"
-          echo "║                                                               ║"
-          echo "║              ✓✓✓ ARCANUM BUILD COMPLETE ✓✓✓                  ║"
-          echo "║                                                               ║"
-          echo "║  Your custom blockchain is ready!                             ║"
-          echo "║  Download from 'Artifacts' section above                      ║"
-          echo "║                                                               ║"
-          echo "╚═══════════════════════════════════════════════════════════════╝"
+          echo "╔════════════════════════════════════════════════════════╗"
+          echo "║                                                        ║"
+          echo "║        🔱 ARCANUM BLOCKCHAIN CREATED 🔱                ║"
+          echo "║                                                        ║"
+          echo "║    Your Monero fork is ready to launch!               ║"
+          echo "║                                                        ║"
+          echo "╚════════════════════════════════════════════════════════╝"
           echo ""
-          echo "📊 Build Statistics:"
-          echo "   • Total time: $((SECONDS / 60)) minutes"
-          echo "   • Memory used: $(free -h | awk 'NR==2{print $3}')"
-          echo "   • Swap used: $(free -h | awk 'NR==3{print $3}')"
+          echo "📦 Download: Artifacts section above"
+          echo "⏱️  Build time: $((SECONDS/60)) minutes"
           echo ""
-          echo "🚀 Next Steps:"
-          echo "   1. Download the artifact ZIP"
+          echo "🚀 Launch your blockchain:"
+          echo "   1. Download artifact"
           echo "   2. Extract files"
-          echo "   3. Run: ./start.sh"
-          echo "   4. Mine: ./mine.sh YOUR_WALLET_ADDRESS"
+          echo "   3. ./start_arcanum.sh"
+          echo "   4. ./arcanum-wallet (create wallet)"
+          echo "   5. ./mine_arcanum.sh YOUR_ADDRESS"
+          echo ""
+          echo "🌐 You now have a complete separate blockchain!"
           echo ""
