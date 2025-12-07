@@ -1,50 +1,45 @@
-name: Arcanum Eternal Build
+name: Arcanum Queue Jumper
 
 on: [workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 180
+    # 1. WE USE 'ubuntu-latest' TO SKIP THE QUEUE
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     
     steps:
-    # 1. CRITICAL: Add 7GB Swap (Prevents Memory Crashes)
-    - name: Enable Swap Memory
+    # 2. ENABLE SWAP MEMORY (Critical for ubuntu-latest to prevent crashing)
+    - name: Enable Swap
       run: |
         sudo fallocate -l 7G /swapfile
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile
-        echo "✓ Added 7GB Swap Space"
+        echo "✓ Enabled 7GB Swap Memory"
         free -h
 
-    # 2. Checkout Official Monero v0.18.3.3
+    # 3. Checkout Code
     - uses: actions/checkout@v4
       with:
         repository: monero-project/monero
         ref: v0.18.3.3
         submodules: recursive
 
-    # 3. Install ALL Dependencies
+    # 4. Install Dependencies
     - name: Install Tools
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev ccache
+      run: sudo apt update && sudo apt install -y build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev python3 libgtest-dev
 
-    # 4. FORCE OVERWRITE Config (The "Arcanum Injection")
-    # We write the file from scratch to guarantee no typos.
-    - name: Write Arcanum Config
+    # 5. Overwrite Config (The Python Fix)
+    - name: Configure Arcanum
       run: |
         python3 -c '
         config_content = r"""
         #pragma once
         #include <string>
         #include <boost/uuid/uuid.hpp>
-
         #define CRYPTONOTE_DNS_TIMEOUT_MS 20000
-
-        namespace config
-        {
+        namespace config {
           uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 239;
           uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 240;
           uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 241;
@@ -56,10 +51,8 @@ jobs:
           std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
           uint32_t const GENESIS_NONCE = 7777;
         }
-        namespace config
-        {
-          namespace testnet
-          {
+        namespace config {
+          namespace testnet {
             uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
             uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
             uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
@@ -70,8 +63,7 @@ jobs:
             std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
             uint32_t const GENESIS_NONCE = 10001;
           }
-          namespace stagenet
-          {
+          namespace stagenet {
             uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
             uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
             uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
@@ -84,27 +76,22 @@ jobs:
           }
         }
         """
-        
         with open("src/cryptonote_config.h", "w") as f:
             f.write(config_content)
-        
-        print("✓ Arcanum Configuration Injected Successfully")
         '
 
-    # 5. Compile Static (With Swap enabled!)
-    - name: Build Static Binaries
-      run: |
-        echo "Starting build..."
-        make release-static -j2
+    # 6. Compile Static (With -j2 thanks to Swap)
+    - name: Compile
+      run: make release-static -j2
 
-    # 6. Search and Rescue Binaries
-    - name: Prepare Artifacts
+    # 7. Search & Rescue
+    - name: Locate Binaries
       run: |
         mkdir arcanum_output
         find build -name "monerod" -type f -exec cp {} arcanum_output/arcanumd \;
         find build -name "monero-wallet-cli" -type f -exec cp {} arcanum_output/arcanum-wallet-cli \;
 
-    # 7. Upload
+    # 8. Upload
     - name: Upload Binaries
       uses: actions/upload-artifact@v4
       with:
