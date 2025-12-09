@@ -23,7 +23,7 @@ namespace config
   std::string const CRYPTONOTE_NAME = "arcanum";
 
   // STANDARD GENESIS (Do not touch - this creates the stable block)
-  std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbcf74ae0671a93d1d3080948a579ad83121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+  std::string const GENESIS_TX = std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cb1e4352500868809f8fb98a13934343bf00021c7229b0f805f426284145a5568f9a23995873587e937d532f507119c6c483236c";
   uint32_t const GENESIS_NONCE = 10000;
 }
 
