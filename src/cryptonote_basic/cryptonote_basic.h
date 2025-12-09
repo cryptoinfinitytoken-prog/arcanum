@@ -48,9 +48,8 @@
 #include "crypto/hash.h"
 #include "misc_language.h"
 #include "ringct/rctTypes.h"
-#include "device/device.hpp"
 #include "cryptonote_basic/fwd.h"
-
+namespace hw { class device; }
 namespace cryptonote
 {
   typedef std::vector<crypto::signature> ring_signature;
