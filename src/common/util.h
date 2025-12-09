@@ -39,7 +39,7 @@
 #include <functional>
 #include <memory>
 #include <string>
-
+#include "cryptonotebasic/cryptonote_basic_defs.h
 #ifdef _WIN32
 #include "windows.h"
 #include "misc_log_ex.h"
